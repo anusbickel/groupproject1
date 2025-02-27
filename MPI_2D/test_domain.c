@@ -115,6 +115,22 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     int bottom_rank = gfs->domain.lower_y_rank;
     int top_rank = gfs->domain.upper_y_rank;
 
+    if (right_rank) != INVALID_RANK { 
+        int *b = malloc(gfs->gs * gfs->ny * sizeof(double));
+    
+        // NOTE: COULD BE POTENTIALLY TERRIBLE AND BAD: Maybe flattened along x instead of y
+        for (i=0; i < 2 * gfs->gs * gfs->ny; i++)
+        {
+    	    const int start = gf_indx_2d(gfs, gfs->nx - 2*gfs->gs - 1, 0);
+    	    b[i] = gfs->vars[0]->val[start + i];
+        }
+    	MPI_STATUS status;
+        MPI_Isendrecv(&b, gfs->gs * gfs->ny, MPI_DOUBLE, right_rank, 0, 
+    		  &gfs->vars[0]->val, gfs->gs * gfs->ny, MPI_DOUBLE, left_rank, 0,
+    		  MPI_COMM_WORLD, &status);
+    }
+}
+
 
 static void print_gf_test_function(struct ngfs_2d *gfs)
 {
