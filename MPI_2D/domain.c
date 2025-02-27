@@ -179,10 +179,13 @@ int setup_2d_domain(const int nx_cpu, const int ny_cpu, const int rank,
 {
     struct domain1d_st domain_1d;
 
+    // Size of the final grid
     domain->global_ni = nx_global;
     domain->global_nj = ny_global;
+    // Size of ghostzones
     domain->gs = gs;
 
+    // Position of first point in grid
     domain->global_x0 = global_x0;
     domain->global_y0 = global_y0;
 

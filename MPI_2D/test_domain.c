@@ -58,7 +58,15 @@ int main(int argc, char **argv)
 
     ngfs_2d_allocate(nvars, &gfs);
 
+    // Blocks until all processes complete domain decomposition
+    MPI_Barrier(MPI_COMM_WORLD);
+
     fill_gf_test_function(&gfs);
+    exchange_ghost_cells(&gfs);
+
+    // Blocks until all processes swap ghost zones
+    MPI_Barrier(MPI_COMM_WORLD);
+
     print_gf_test_function(&gfs);
 
     /*
@@ -99,6 +107,14 @@ static void fill_gf_test_function(struct ngfs_2d *gfs)
         }
     }
 }
+
+static void exchange_ghost_cells(struct ngfs_2d *gfs)
+{
+    int left_rank = gfs->domain.lower_x_rank;
+    int right_rank = gfs->domain.upper_x_rank;
+    int bottom_rank = gfs->domain.lower_y_rank;
+    int top_rank = gfs->domain.upper_y_rank;
+
 
 static void print_gf_test_function(struct ngfs_2d *gfs)
 {
