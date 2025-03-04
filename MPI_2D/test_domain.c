@@ -216,7 +216,8 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     // Top to Bottom
     if (gfs->domain.lower_y_rank != INVALID_RANK)
     {
-	start = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
+	//sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
+	sstart = gf_indx_2d(gfs, 0, gfs->gs);
 	rstart = gf_indx_2d(gfs, 0, 0);
 
 	MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
@@ -227,7 +228,8 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     // Bottom to Top
     if (gfs->domain.upper_y_rank != INVALID_RANK)
     {
-	sstart = gf_indx_2d(gfs, 0, gfs->gs);
+	//sstart = gf_indx_2d(gfs, 0, gfs->gs);
+	sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
 	rstart = gf_indx_2d(gfs, 0, gfs->ny - gfs->gs);
 
 	MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
