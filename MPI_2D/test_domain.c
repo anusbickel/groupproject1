@@ -110,6 +110,54 @@ static void fill_gf_test_function(struct ngfs_2d *gfs)
             gfs->vars[0]->val[ij] = sin(x * 10) * cos(y * 12);
         }
     }
+
+    if (gfs->domain.lower_x_rank != INVALID_RANK)
+    {
+	for (int j = 0; j < gfs->ny; j++)
+	{
+	    for (int i = 0; i < gfs->gs; i++)
+	    {
+		const int ij = gf_indx_2d(gfs, i, j);
+		gfs->vars[0]->val[ij] = 2;
+	    }
+	}
+    }
+
+    if (gfs->domain.upper_x_rank != INVALID_RANK)
+    {
+        for (int j = 0; j < gfs->ny; j++)
+        {
+            for (int i = gfs->nx - gfs->gs; i < gfs->nx; i++)
+            {
+                const int ij = gf_indx_2d(gfs, i, j);
+                gfs->vars[0]->val[ij] = 2;
+            }
+        }
+    }
+
+    if (gfs->domain.upper_y_rank != INVALID_RANK)
+    {
+        for (int j = gfs->ny - gfs->gs; j < gfs->ny; j++)
+        {
+            for (int i = 0; i < gfs->nx; i++)
+            {
+                const int ij = gf_indx_2d(gfs, i, j);
+                gfs->vars[0]->val[ij] = 2;
+            }
+        }
+    }
+
+    if (gfs->domain.lower_y_rank != INVALID_RANK)
+    {
+        for (int j = 0; j < gfs->gs; j++)
+        {
+            for (int i = 0; i < gfs->nx; i++)
+            {
+                const int ij = gf_indx_2d(gfs, i, j);
+                gfs->vars[0]->val[ij] = 2;
+            }
+        }
+    }
 }
 
 int MPI_Isendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int dest, int sendtag, 
@@ -143,20 +191,20 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     for (int j=0; j < gfs->ny; j++)
     {
 	// Left to Right
-	if (right_rank != INVALID_RANK)
+	if (gfs->domain.upper_x_rank != INVALID_RANK)
 	{
 	    sstart = gf_indx_2d(gfs, gfs->nx - 2*gfs->gs, j);
-	    rstart = gf_indx_2d(gfs, 0, j);
+            rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
             MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->gs, MPI_DOUBLE, right_rank, 0, 
     		          &gfs->vars[0]->val[rstart], gfs->gs, MPI_DOUBLE, left_rank, 0,
     		          MPI_COMM_WORLD, &request);
 	}
 	
 	// Right to Left
-	if (left_rank != INVALID_RANK)
+	if (gfs->domain.lower_x_rank != INVALID_RANK)
 	{
 	    sstart = gf_indx_2d(gfs, gfs->gs, j);
-	    rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
+            rstart = gf_indx_2d(gfs, 0, j);
 	    MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->gs, MPI_DOUBLE, left_rank, 0,
 			  &gfs->vars[0]->val[rstart], gfs->gs, MPI_DOUBLE, right_rank, 0,
 			  MPI_COMM_WORLD, &request);
@@ -166,9 +214,9 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     MPI_Barrier(MPI_COMM_WORLD);
 
     // Top to Bottom
-    if (bottom_rank != INVALID_RANK)
+    if (gfs->domain.lower_y_rank != INVALID_RANK)
     {
-	sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
+	start = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
 	rstart = gf_indx_2d(gfs, 0, 0);
 
 	MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
@@ -177,10 +225,10 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     }
 
     // Bottom to Top
-    if (top_rank != INVALID_RANK)
+    if (gfs->domain.upper_y_rank != INVALID_RANK)
     {
 	sstart = gf_indx_2d(gfs, 0, gfs->gs);
-	rstart = gf_indx_2d(gfs, 0, gfs->nx - gfs->gs);
+	rstart = gf_indx_2d(gfs, 0, gfs->ny - gfs->gs);
 
 	MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
 		      &gfs->vars[0]->val[rstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
