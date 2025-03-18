@@ -195,6 +195,7 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
 	{
 	    if (gfs->domain.lower_x_rank == INVALID_RANK) {
 		    sstart = gf_indx_2d(gfs, gfs->nx - 2*gfs->gs, j);
+		    printf("%d", sstart);
 		    rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
 	    }
 	    else {
@@ -226,19 +227,16 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     }
 
     MPI_Barrier(MPI_COMM_WORLD);
-
-    // Top to Bottom
+    // Bottom to Top
     if (gfs->domain.lower_y_rank != INVALID_RANK)
     {
 	if (gfs->domain.upper_y_rank == INVALID_RANK) {
 	    sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
-	    //sstart = gf_indx_2d(gfs, 0, gfs->gs);
 	    rstart = gf_indx_2d(gfs, 0, 0);
 	}
 	//  -------  NEEDS TO CHANGE ------ //
 	else {
-	    //sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
-	    sstart = gf_indx_2d(gfs, 0, gfs->gs);
+	    sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
 	    rstart = gf_indx_2d(gfs, 0, 0);
 	}
 	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ //
@@ -248,19 +246,20 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
 		      MPI_COMM_WORLD, &request);
     }
 
-    // Bottom to Top
+    
+    // Top to Bottom
     if (gfs->domain.upper_y_rank != INVALID_RANK)
     {
+	
 	if (gfs->domain.lower_y_rank == INVALID_RANK) {
-		//sstart = gf_indx_2d(gfs, 0, gfs->gs);
 		sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
 		rstart = gf_indx_2d(gfs, 0 , gfs->ny - gfs->gs);
 	}
+
 	// ------ NEEDS TO CHANGE ------ //
 	else {
-	    rstart = gf_indx_2d(gfs, 0, gfs->gs);
-	    //sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
-	    sstart = gf_indx_2d(gfs, 0, gfs->ny - gfs->gs);
+	    sstart = gf_indx_2d(gfs, 0, gfs->ny - 2 * gfs->gs);
+	    rstart = gf_indx_2d(gfs, 0, gfs->ny-gfs->gs);
 	}
 	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ //
 
@@ -269,7 +268,6 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
 		      MPI_COMM_WORLD, &request);
     }
 }
-
 
 static void print_gf_test_function(struct ngfs_2d *gfs)
 {
