@@ -15,4 +15,4 @@
 #spack load openmpi@4.1.6%gcc@12.3.1/xcunp5q
 
 export OMP_NUM_THREADS=1
-srun -n 16 ./test_domain 40 40 4 4
+srun -n 16 ./test_domain 100 100 4 4
