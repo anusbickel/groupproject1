@@ -98,6 +98,7 @@ int main(int argc, char **argv)
     return EXIT_SUCCESS;
 }
 
+
 static void fill_gf_test_function(struct ngfs_2d *gfs)
 {
     for (int j = 0; j < gfs->ny; j++)
@@ -113,14 +114,14 @@ static void fill_gf_test_function(struct ngfs_2d *gfs)
 
     if (gfs->domain.lower_x_rank != INVALID_RANK)
     {
-	for (int j = 0; j < gfs->ny; j++)
-	{
-	    for (int i = 0; i < gfs->gs; i++)
-	    {
-		const int ij = gf_indx_2d(gfs, i, j);
-		gfs->vars[0]->val[ij] = 2;
-	    }
-	}
+        for (int j = 0; j < gfs->ny; j++)
+        {
+            for (int i = 0; i < gfs->gs; i++)
+            {
+                const int ij = gf_indx_2d(gfs, i, j);
+                gfs->vars[0]->val[ij] = 2;
+            }
+        }
     }
 
     if (gfs->domain.upper_x_rank != INVALID_RANK)
@@ -160,13 +161,14 @@ static void fill_gf_test_function(struct ngfs_2d *gfs)
     }
 }
 
-int MPI_Isendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int dest, int sendtag, 
-		  void *recvbuf, int recvcount, MPI_Datatype recvtype, int source, int recvtag, MPI_Comm comm,
-                  MPI_Request *request) 
+
+int MPI_Isendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int dest, int sendtag,
+                  void *recvbuf, int recvcount, MPI_Datatype recvtype, int source, int recvtag, MPI_Comm comm,
+                  MPI_Request *request)
 {
     MPI_Isend(sendbuf, sendcount, sendtype, dest, sendtag, comm, request);
     MPI_Irecv(recvbuf, recvcount, recvtype, source, recvtag, comm, request);
-    
+
     return 0;
 }
 
@@ -177,6 +179,7 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     int right_rank = gfs->domain.upper_x_rank;
     int bottom_rank = gfs->domain.lower_y_rank;
     int top_rank = gfs->domain.upper_y_rank;
+    //int rank = gfs->domain.rank;
 
     /*int *b = malloc(gfs->gs * gfs->ny * sizeof(double));
     
@@ -188,83 +191,84 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     MPI_Request request;
     int sstart;
     int rstart;
-    for (int j=0; j < gfs->ny; j++)
+
+    for (int j = 0; j < gfs->ny; j++)
     {
-	// Left to Right
-	if (gfs->domain.upper_x_rank != INVALID_RANK)
-	{
-	    if (gfs->domain.lower_x_rank == INVALID_RANK) {
-		    sstart = gf_indx_2d(gfs, gfs->nx - 2*gfs->gs, j);
-		    printf("%d", sstart);
-		    rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
-	    }
-	    else {
-	        sstart = gf_indx_2d(gfs, gfs->nx - 2*gfs->gs, j);
-                //rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
-	        rstart = gf_indx_2d(gfs, 0, j);
-	    }
-            MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->gs, MPI_DOUBLE, right_rank, 0, 
-    		          &gfs->vars[0]->val[rstart], gfs->gs, MPI_DOUBLE, left_rank, 0,
-    		          MPI_COMM_WORLD, &request);
-	}
-	
-	// Right to Left
-	if (gfs->domain.lower_x_rank != INVALID_RANK)
-	{
-	    if (gfs->domain.upper_x_rank == INVALID_RANK) {
-		    sstart = gf_indx_2d(gfs, gfs->gs, j);
-		    rstart = gf_indx_2d(gfs, 0, j);
-	    }
-	    else {
-	        sstart = gf_indx_2d(gfs, gfs->gs, j);
-                //rstart = gf_indx_2d(gfs, 0, j);
-	        rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
-	    }
-	    MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->gs, MPI_DOUBLE, left_rank, 0,
-			  &gfs->vars[0]->val[rstart], gfs->gs, MPI_DOUBLE, right_rank, 0,
-			  MPI_COMM_WORLD, &request);
-	}
+        // Left to Right 
+        if (gfs->domain.upper_x_rank != INVALID_RANK)
+        {
+            if (gfs->domain.lower_x_rank == INVALID_RANK) {
+                // grabs only left edge
+                sstart = gf_indx_2d(gfs, gfs->nx - 2 * gfs->gs, j);
+                rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
+            }
+            else {
+                // only cores in the middle 
+                sstart = gf_indx_2d(gfs, gfs->nx - 2 * gfs->gs, j);
+                rstart = gf_indx_2d(gfs, 0, j);
+            }
+            MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->gs, MPI_DOUBLE, right_rank, 0,
+                &gfs->vars[0]->val[rstart], gfs->gs, MPI_DOUBLE, left_rank, 0,
+                MPI_COMM_WORLD, &request);
+        }
+
+        // Right to Left 
+        if (gfs->domain.lower_x_rank != INVALID_RANK)
+        {
+            if (gfs->domain.upper_x_rank == INVALID_RANK) {
+                // grabs good data from right edge 
+                sstart = gf_indx_2d(gfs, gfs->gs, j);
+                rstart = gf_indx_2d(gfs, 0, j);
+            }
+            else {
+                // only cores in the middle 
+                sstart = gf_indx_2d(gfs, gfs->gs, j);
+                rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
+            }
+            MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->gs, MPI_DOUBLE, left_rank, 0,
+                &gfs->vars[0]->val[rstart], gfs->gs, MPI_DOUBLE, right_rank, 0,
+                MPI_COMM_WORLD, &request);
+        }
     }
 
     MPI_Barrier(MPI_COMM_WORLD);
-    // Top to Bottom
-    if (gfs->domain.lower_y_rank != INVALID_RANK)
+    
+    // Top to Bottom 
+    if (gfs->domain.lower_y_rank != INVALID_RANK)  
     {
-	if (gfs->domain.upper_y_rank == INVALID_RANK) {
-	    sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
-	    rstart = gf_indx_2d(gfs, 0, 0);
-	}
-	//  -------  NEEDS TO CHANGE ------ //
-	else {
-	    sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
-	    rstart = gf_indx_2d(gfs, 0, gfs->ny - gfs->gs);
-	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ //
+	    if (gfs->domain.upper_y_rank == INVALID_RANK) {
+	        // Top edge sending
+            sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
+	        rstart = gf_indx_2d(gfs, 0, 0); // 0,0 is right
+	    }
+	    else {
+	        // Middle sending
+            sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
+	        rstart = gf_indx_2d(gfs, 0, gfs->ny -gfs->gs); // ny-gs is right
+	    }
 
-	MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
+	    MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
 		      &gfs->vars[0]->val[rstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
 		      MPI_COMM_WORLD, &request);
-	
     }
-
     
     // Bottom to Top
-    if (gfs->domain.upper_y_rank != INVALID_RANK)
+    if (gfs->domain.upper_y_rank != INVALID_RANK) 
     {
-	
-	if (gfs->domain.lower_y_rank == INVALID_RANK) {
-		sstart = gf_indx_2d(gfs, 0, gfs->ny - 2*gfs->gs);
-		rstart = gf_indx_2d(gfs, 0 , gfs->ny - gfs->gs);
-	}
-
-	// ------ NEEDS TO CHANGE ------ //
-	else {
-	    sstart = gf_indx_2d(gfs, 0, gfs->ny - 2 * gfs->gs);
-	    rstart = gf_indx_2d(gfs, 0, 0);
-	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ //
-
-	MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
+	    if (gfs->domain.lower_y_rank == INVALID_RANK) {
+            // Working on bottom edge
+		    sstart = gf_indx_2d(gfs, 0, gfs->ny - 2 * gfs->gs);
+		    rstart = gf_indx_2d(gfs, 0 , gfs->ny - gfs->gs);
+            //printf("This should be the bottom: rank %d \n", rank); // verification is good!
+	    }
+	    else { 
+            // BOTTOM SENDING TO TOP; works on all middle cores 
+	        sstart = gf_indx_2d(gfs, 0, gfs->ny - 2 * gfs->gs);
+	        rstart = gf_indx_2d(gfs, 0, 0);
+            //printf("This should be the middle: rank %d \n", rank);
+	    }
+    
+	    MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
 		      &gfs->vars[0]->val[rstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
 		      MPI_COMM_WORLD, &request);
     }
