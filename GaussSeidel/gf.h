@@ -9,7 +9,9 @@ struct gf
 {
     size_t n;             /* length of each array */
     int gs;               /* Ghost size of algorithm */
-    double *restrict val; /* array to store data */
+    double *restrict val; /* array to store data - also uval in gauss-seidel ( •̀ᴗ•́ )و ̑̑*/
+    double *sval;         /* solution function for gauss-seidel */
+    double *eval;         /* backward error calculation for gauss-seidel */
     char *vname;          /* A name could be helpful for IO */
 };
 

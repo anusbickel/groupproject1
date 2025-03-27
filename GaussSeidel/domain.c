@@ -174,9 +174,10 @@ int setup_3d_domain(const int nx_cpu, const int ny_cpu, const int nz_cpu,
 int setup_2d_domain(const int nx_cpu, const int ny_cpu, const int rank,
                     const int nx_global, const int ny_global, const int gs,
                     const double global_x0, const double global_y0,
-                    const double dx, const double dy,
+                    const double dx, const double dy, 
                     struct domain2d_st *domain)
 {
+    // uval is just the values ( •̀ᴗ•́ )و ̑̑
     struct domain1d_st domain_1d;
 
     // Size of the final grid

@@ -8,19 +8,42 @@
 static void fill_guess_values(struct ngfs_2d *gfs);
 static void exchange_ghost_cells(struct ngfs_2d *gfs);
 static void print_gf_function(struct ngfs_2d *gfs);
+void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int max_iters);
 int MPI_Isendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int dest, int sendtag,
                   void *recvbuf, int recvcount, MPI_Datatype recvtype, int source, int recvtag, MPI_Comm comm,
                   MPI_Request *request);
 
 
+void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int max_iters)
+{
+    int left_rank = gfs->domain.lower_x_rank;
+    int right_rank = gfs->domain.upper_x_rank;
+    int bottom_rank = gfs->domain.lower_y_rank;
+    int top_rank = gfs->domain.upper_y_rank;
+
+    if (left_rank == INVALID_RANK) {
+	ystart
+
+    for (int iter = 0; iter < max_iters; iter++)
+    {
+	exchange_ghost_cells(gfs);
+	for (long j = ystart; j < yend; j++) // 1 is ghostzone size.  For GS, ghostzone size is always 1
+	{
+	    for (long i = xstart; i < xend; i++)
+	    {
+		const int ij = gf_indx_2d(gfs, i, j);
+		const
+
 
 static void fill_guess_values(struct ngfs_2d *gfs) {
     for (int j = 0; j < gfs->ny; j++)
     {
+	const double y = gfs->y0 + j * gfs->dy;
         for (int i = 0; i < gfs->nx; i++)
         {
             const int ij = gf_indx_2d(gfs, i, j);
-            gfs->vars[0]->val[ij] = 0;
+	    const double x = gfs->x0 + i * gfs->dx;
+            gfs->vars[0]->val[ij] = cos(20 * 4 * atan(1) * x) + sin(20 * 4 * atan(1) * y);
         }
     }	
 }
