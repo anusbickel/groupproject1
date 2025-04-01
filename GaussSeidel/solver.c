@@ -1,9 +1,15 @@
 #include "domain.h"
 #include "gf.h"
+#include <assert.h>
 #include <math.h>
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+
+#ifndef M_PI
+#    define M_PI 3.14159265358979323846
+#endif
 
 static void fill_guess_values(struct ngfs_2d *gfs);
 static void exchange_ghost_cells(struct ngfs_2d *gfs);
@@ -12,27 +18,133 @@ void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int max_iters);
 int MPI_Isendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int dest, int sendtag,
                   void *recvbuf, int recvcount, MPI_Datatype recvtype, int source, int recvtag, MPI_Comm comm,
                   MPI_Request *request);
+double check_error(struct ngfs_2d *gfs);
 
 
-void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int max_iters)
+int main(int argc, char **argv)
+{
+    MPI_Init(&argc, &argv);
+
+    int mpi_size = -1; 
+    int mpi_rank = -1; 
+    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+
+    if (argc != 5)
+    {   
+        fprintf(stderr, "Usage: %s NX NY PX PY\n", argv[0]);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }   
+
+    const int global_nx = atoi(argv[1]);
+    const int global_ny = atoi(argv[2]);
+    const int px = atoi(argv[3]);
+    const int py = atoi(argv[4]);
+
+    if (global_nx <= 0 || global_ny <= 0 || px <= 0 || py <= 0)
+    {
+        fprintf(stderr, "NX, NY, PX, PY all > 0 required (%d, %d, %d, %d)\n",
+                global_nx, global_ny, px, py);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }
+
+    if (px * py != mpi_size)
+    {
+        fprintf(stderr, "PX * PY != MPI_SIZE (%d, %d, %d)\n", px, py, mpi_size);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }
+
+    const double dx = 1.0 / (global_nx - 1);
+    const double dy = 1.0 / (global_ny - 1);
+    const double global_x0 = 0.0;
+    const double global_y0 = 0.0;
+
+    const int gs = 1;
+
+    struct ngfs_2d gfs;
+    gfs.vars = NULL;
+
+    const int nvars = 3; // uval 0, sval 1, eval 2
+
+    printf("SETTING UP DOMAIN\n");
+    setup_2d_domain(px, py, mpi_rank, global_nx, global_ny, gs, global_x0,
+                    global_y0, dx, dy, &gfs.domain);
+
+    printf("ALLOCATING\n");
+    ngfs_2d_allocate(nvars, &gfs);
+
+    printf("FILLING VALUES\n");
+    fill_guess_values(&gfs);
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    //exchange_ghost_cells(&gfs);
+    //MPI_Barrier(MPI_COMM_WORLD);
+
+    gauss_seidel_solver_2d(&gfs, 1024);
+
+    print_gf_function(&gfs);
+
+    ngfs_deallocate_2d(&gfs);
+
+    MPI_Finalize();
+    return 0;
+}
+
+
+void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int check_every)
 {
     int left_rank = gfs->domain.lower_x_rank;
     int right_rank = gfs->domain.upper_x_rank;
     int bottom_rank = gfs->domain.lower_y_rank;
     int top_rank = gfs->domain.upper_y_rank;
 
-    if (left_rank == INVALID_RANK) {
-	ystart
+    double *uval = gfs->vars[0]->val;
+    double *sval = gfs->vars[1]->val;
 
-    for (int iter = 0; iter < max_iters; iter++)
+    int ystart; int yend; int xstart; int xend;
+
+    if (top_rank == INVALID_RANK)    {yend   = gfs->ny;} else {yend   = gfs->ny-1;}
+    if (bottom_rank == INVALID_RANK) {ystart = 0;}       else {ystart = 1;}
+    if (left_rank == INVALID_RANK)   {xstart = 0;}       else {xstart = 1;}
+    if (right_rank == INVALID_RANK)  {xend   = gfs->nx;} else {xend   = gfs->nx-1;}	
+
+    printf("----- BEGINNING SOLVER ON RANK %u -----\n", gfs->domain.rank);
+    for (int _=0;;_+=check_every)
     {
-	exchange_ghost_cells(gfs);
-	for (long j = ystart; j < yend; j++) // 1 is ghostzone size.  For GS, ghostzone size is always 1
+        for (int iter = 0; iter < check_every; iter++)
 	{
-	    for (long i = xstart; i < xend; i++)
-	    {
-		const int ij = gf_indx_2d(gfs, i, j);
-		const
+    	    exchange_ghost_cells(gfs);
+    	    for (long j = ystart; j < yend; j++) // 1 is ghostzone size.  For GS, ghostzone size is always 1
+    	    {
+    	        for (long i = xstart; i < xend; i++)
+    	        {
+    	    	const int ij = gf_indx_2d(gfs, i, j);
+
+		double lpt; double rpt; double dpt; double upt; 
+
+		if (i == xstart) {lpt = 0;}  else {lpt = uval[gf_indx_2d(gfs, i-1, j)];}
+		if (i == xend-1) {rpt = 0;}  else {rpt = uval[gf_indx_2d(gfs, i+1, j)];}
+		if (j == ystart) {dpt = 0;}  else {dpt = uval[gf_indx_2d(gfs, i, j-1)];}
+		if (j == yend-1) {upt = 0;}  else {upt = uval[gf_indx_2d(gfs, i, j+1)];}
+    
+    	    	uval[ij] = (lpt + rpt + dpt + upt) / 4 - sval[ij] * gfs->dx * gfs->dy;
+    	        }
+    	    }
+        }
+
+        double gerror = check_error(gfs);
+
+	if (gfs->domain.rank == 0)
+	{
+	    printf("%e\n", gerror);
+	}
+
+	if (gerror < 1.0e-9)
+	{
+	    break;
+	}
+    }
+}
 
 
 static void fill_guess_values(struct ngfs_2d *gfs) {
@@ -43,7 +155,9 @@ static void fill_guess_values(struct ngfs_2d *gfs) {
         {
             const int ij = gf_indx_2d(gfs, i, j);
 	    const double x = gfs->x0 + i * gfs->dx;
-            gfs->vars[0]->val[ij] = cos(20 * 4 * atan(1) * x) + sin(20 * 4 * atan(1) * y);
+	    gfs->vars[0]->val[ij] = 1.0;
+            gfs->vars[1]->val[ij] = -2*(M_PI*M_PI)*sin(M_PI*x)*sin(M_PI*y);
+	    gfs->vars[2]->val[ij] = 0.0;
         }
     }	
 }
@@ -126,12 +240,12 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     {
             if (gfs->domain.upper_y_rank == INVALID_RANK) {
                 // Top edge sending
-            sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
+                sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
                 rstart = gf_indx_2d(gfs, 0, 0); // 0,0 is right
             }
             else {
                 // Middle sending
-            sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
+                sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
                 rstart = gf_indx_2d(gfs, 0, gfs->ny -gfs->gs); // ny-gs is right
             }
 
@@ -162,6 +276,36 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     }
 }
 
+
+double check_error(struct ngfs_2d *gfs)
+{
+    double error = 0.0;
+    double gerror = 0.0;
+    double *uval = gfs->vars[0]->val;
+    double *sval = gfs->vars[1]->val;
+    double *eval = gfs->vars[2]->val;
+
+    for (long j = 1; j < gfs->ny - 1; j++)
+    {
+	for (long i = 1; i < gfs->nx - 1; i++)
+	{
+	    const int ij = gf_indx_2d(gfs, i, j);
+	    const int imj = gf_indx_2d(gfs, i-1, j); 
+            const int ipj = gf_indx_2d(gfs, i+1, j); 
+            const int ijm = gf_indx_2d(gfs, i, j-1);
+            const int ijp = gf_indx_2d(gfs, i, j+1);
+	    eval[ij] = (uval[ipj] + uval[imj] + uval[ijp] + uval[ijm] - 4 * uval[ij]) / (gfs->dx * gfs->dy) - sval[ij];
+            double lerr = fabs(eval[ij]);
+	    if (lerr > error)
+	    {
+		error = lerr;
+	    }
+        }
+    }
+
+    MPI_Allreduce(&error, &gerror, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    return gerror;
+}
 
 
 static void print_gf_function(struct ngfs_2d *gfs)

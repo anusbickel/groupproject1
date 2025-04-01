@@ -179,7 +179,11 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     int right_rank = gfs->domain.upper_x_rank;
     int bottom_rank = gfs->domain.lower_y_rank;
     int top_rank = gfs->domain.upper_y_rank;
-    //int rank = gfs->domain.rank;
+    int rank = gfs->domain.rank;
+
+    printf("---------------- rank: %d ----------------\n", rank);
+    printf("lower_x_rank: %d, upper_x_rank: %d\n", left_rank, right_rank);
+    printf("lower_y_rank: %d, upper_y_rank: %d\n", bottom_rank, top_rank);
 
     /*int *b = malloc(gfs->gs * gfs->ny * sizeof(double));
     
