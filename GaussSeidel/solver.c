@@ -80,7 +80,7 @@ int main(int argc, char **argv)
     //exchange_ghost_cells(&gfs);
     //MPI_Barrier(MPI_COMM_WORLD);
 
-    gauss_seidel_solver_2d(&gfs, 1024);
+    gauss_seidel_solver_2d(&gfs, 10240);
 
     print_gf_function(&gfs);
 
@@ -114,7 +114,7 @@ void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int check_every)
         for (int iter = 0; iter < check_every; iter++)
 	{
     	    exchange_ghost_cells(gfs);
-    	    for (long j = ystart; j < yend; j++) // 1 is ghostzone size.  For GS, ghostzone size is always 1
+    	    for (long j = ystart; j < yend; j++) 
     	    {
     	        for (long i = xstart; i < xend; i++)
     	        {
@@ -122,12 +122,16 @@ void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int check_every)
 
 		double lpt; double rpt; double dpt; double upt; 
 
-		if (i == xstart) {lpt = 0;}  else {lpt = uval[gf_indx_2d(gfs, i-1, j)];}
-		if (i == xend-1) {rpt = 0;}  else {rpt = uval[gf_indx_2d(gfs, i+1, j)];}
-		if (j == ystart) {dpt = 0;}  else {dpt = uval[gf_indx_2d(gfs, i, j-1)];}
-		if (j == yend-1) {upt = 0;}  else {upt = uval[gf_indx_2d(gfs, i, j+1)];}
-    
+		// --- BOUNDARY CONDITIONS --- //
+		if (i == 0) 	    {lpt = 0;}  else {lpt = uval[gf_indx_2d(gfs, i-1, j)];} 
+		if (i == gfs->nx-1) {rpt = 0;}  else {rpt = uval[gf_indx_2d(gfs, i+1, j)];}
+		if (j == 0) 	    {dpt = 0;}  else {dpt = uval[gf_indx_2d(gfs, i, j-1)];}
+		if (j == gfs->ny-1) {upt = 0;}  else {upt = uval[gf_indx_2d(gfs, i, j+1)];}
+		// --------------------------- //    		
+
+		printf("Before: uval[%d] = %f\n", ij, uval[ij]);
     	    	uval[ij] = (lpt + rpt + dpt + upt) / 4 - sval[ij] * gfs->dx * gfs->dy;
+		printf("After: uval[%d] = %f\n", ij, uval[ij]);
     	        }
     	    }
         }
@@ -141,6 +145,7 @@ void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int check_every)
 
 	if (gerror < 1.0e-9)
 	{
+	    printf("REACHED\n");
 	    break;
 	}
     }
@@ -281,20 +286,37 @@ double check_error(struct ngfs_2d *gfs)
 {
     double error = 0.0;
     double gerror = 0.0;
+
+    int left_rank = gfs->domain.lower_x_rank;
+    int right_rank = gfs->domain.upper_x_rank;
+    int bottom_rank = gfs->domain.lower_y_rank;
+    int top_rank = gfs->domain.upper_y_rank;
+
     double *uval = gfs->vars[0]->val;
     double *sval = gfs->vars[1]->val;
     double *eval = gfs->vars[2]->val;
 
-    for (long j = 1; j < gfs->ny - 1; j++)
+    int ystart; int yend; int xstart; int xend;
+
+    if (top_rank == INVALID_RANK)    {yend   = gfs->ny;} else {yend   = gfs->ny-1;}
+    if (bottom_rank == INVALID_RANK) {ystart = 0;}       else {ystart = 1;}
+    if (left_rank == INVALID_RANK)   {xstart = 0;}       else {xstart = 1;}
+    if (right_rank == INVALID_RANK)  {xend   = gfs->nx;} else {xend   = gfs->nx-1;}
+
+    for (long j = ystart; j < yend; j++)
     {
-	for (long i = 1; i < gfs->nx - 1; i++)
+	for (long i = xstart; i < xend; i++)
 	{
 	    const int ij = gf_indx_2d(gfs, i, j);
-	    const int imj = gf_indx_2d(gfs, i-1, j); 
-            const int ipj = gf_indx_2d(gfs, i+1, j); 
-            const int ijm = gf_indx_2d(gfs, i, j-1);
-            const int ijp = gf_indx_2d(gfs, i, j+1);
-	    eval[ij] = (uval[ipj] + uval[imj] + uval[ijp] + uval[ijm] - 4 * uval[ij]) / (gfs->dx * gfs->dy) - sval[ij];
+
+	    double lpt; double rpt; double dpt; double upt;
+
+	    if (i == 0) 	{lpt = 0;}  else {lpt = uval[gf_indx_2d(gfs, i-1, j)];}
+            if (i == gfs->nx-1) {rpt = 0;}  else {rpt = uval[gf_indx_2d(gfs, i+1, j)];}
+            if (j == 0) 	{dpt = 0;}  else {dpt = uval[gf_indx_2d(gfs, i, j-1)];}
+            if (j == gfs->ny-1) {upt = 0;}  else {upt = uval[gf_indx_2d(gfs, i, j+1)];}
+
+	    eval[ij] = (rpt + lpt + upt + dpt - 4 * uval[ij]) / (gfs->dx * gfs->dy) - sval[ij];
             double lerr = fabs(eval[ij]);
 	    if (lerr > error)
 	    {
@@ -302,6 +324,8 @@ double check_error(struct ngfs_2d *gfs)
 	    }
         }
     }
+
+    //printf("ERROR AT 100: %f", eval[100]);
 
     MPI_Allreduce(&error, &gerror, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     return gerror;
