@@ -21,7 +21,7 @@ int MPI_Isendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int
 double check_error(struct ngfs_2d *gfs);
 
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     MPI_Init(&argc, &argv);
 
@@ -111,30 +111,30 @@ void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int check_every)
     printf("----- BEGINNING SOLVER ON RANK %u -----\n", gfs->domain.rank);
     for (int _=0;;_+=check_every)
     {
-        for (int iter = 0; iter < check_every; iter++)
+    for (int iter = 0; iter < check_every; iter++)
 	{
-    	    exchange_ghost_cells(gfs);
-    	    for (long j = ystart; j < yend; j++) 
+    	exchange_ghost_cells(gfs);
+    	for (long j = ystart; j < yend; j++) 
+    	{
+    	    for (long i = xstart; i < xend; i++)
     	    {
-    	        for (long i = xstart; i < xend; i++)
-    	        {
-    	    	const int ij = gf_indx_2d(gfs, i, j);
+    	    const int ij = gf_indx_2d(gfs, i, j);
 
-		double lpt; double rpt; double dpt; double upt; 
+		    double lpt; double rpt; double dpt; double upt; 
 
-		// --- BOUNDARY CONDITIONS --- //
-		if (i == 0) 	    {lpt = 0;}  else {lpt = uval[gf_indx_2d(gfs, i-1, j)];} 
-		if (i == gfs->nx-1) {rpt = 0;}  else {rpt = uval[gf_indx_2d(gfs, i+1, j)];}
-		if (j == 0) 	    {dpt = 0;}  else {dpt = uval[gf_indx_2d(gfs, i, j-1)];}
-		if (j == gfs->ny-1) {upt = 0;}  else {upt = uval[gf_indx_2d(gfs, i, j+1)];}
-		// --------------------------- //    		
+		    // vvv BOUNDARY CONDITIONS vvv  vvvvvvvvvvvvv REGULAR POINTS vvvvvvvvvvvvv
+		    if (i == 0) 	    {lpt = 0;}  else {lpt = uval[gf_indx_2d(gfs, i-1, j)];}
+		    if (i == gfs->nx-1) {rpt = 0;}  else {rpt = uval[gf_indx_2d(gfs, i+1, j)];}
+		    if (j == 0) 	    {dpt = 0;}  else {dpt = uval[gf_indx_2d(gfs, i, j-1)];}
+		    if (j == gfs->ny-1) {upt = 0;}  else {upt = uval[gf_indx_2d(gfs, i, j+1)];}
+		    // ^^^^^^^^^^^^^^^^^^^^^^^^^^^ 	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-		printf("Before: uval[%d] = %f\n", ij, uval[ij]);
-    	    	uval[ij] = (lpt + rpt + dpt + upt) / 4 - sval[ij] * gfs->dx * gfs->dy;
-		printf("After: uval[%d] = %f\n", ij, uval[ij]);
-    	        }
+		    printf("Before: uval[%d] = %f\n", ij, uval[ij]);
+    	    uval[ij] = (lpt + rpt + dpt + upt) / 4 - sval[ij] * gfs->dx * gfs->dy;
+		    printf("After: uval[%d] = %f\n", ij, uval[ij]);
     	    }
-        }
+    	}
+    }
 
         double gerror = check_error(gfs);
 
@@ -155,14 +155,15 @@ void gauss_seidel_solver_2d(struct ngfs_2d *gfs, int check_every)
 static void fill_guess_values(struct ngfs_2d *gfs) {
     for (int j = 0; j < gfs->ny; j++)
     {
-	const double y = gfs->y0 + j * gfs->dy;
+	    const double y = gfs->y0 + j * gfs->dy;
         for (int i = 0; i < gfs->nx; i++)
         {
             const int ij = gf_indx_2d(gfs, i, j);
-	    const double x = gfs->x0 + i * gfs->dx;
-	    gfs->vars[0]->val[ij] = 1.0;
-            gfs->vars[1]->val[ij] = -2*(M_PI*M_PI)*sin(M_PI*x)*sin(M_PI*y);
-	    gfs->vars[2]->val[ij] = 0.0;
+	        const double x = gfs->x0 + i * gfs->dx;
+	        gfs->vars[0]->val[ij] = 1.0;
+            //gfs->vars[1]->val[ij] = -2*(M_PI*M_PI)*sin(M_PI*x)*sin(M_PI*y);
+            gfs->vars[1]->val[ij] = cos(20 * 4 * atan(1) * x) * cos(20 * 4 * atan(1) * y);
+	        gfs->vars[2]->val[ij] = 0.0;
         }
     }	
 }
@@ -188,13 +189,6 @@ static void exchange_ghost_cells(struct ngfs_2d *gfs)
     int top_rank = gfs->domain.upper_y_rank;
     //int rank = gfs->domain.rank;
 
-    /*int *b = malloc(gfs->gs * gfs->ny * sizeof(double));
-
-    for (i=0; i < 2 * gfs->gs * gfs->ny; i++)
-    {
-        const int start = gf_indx_2d(gfs, gfs->nx - 2*gfs->gs - 1, 0);
-        b[i] = gfs->vars[0]->val[start + i];
-    }*/
     MPI_Request request;
     int sstart;
     int rstart;
@@ -311,9 +305,9 @@ double check_error(struct ngfs_2d *gfs)
 
 	    double lpt; double rpt; double dpt; double upt;
 
-	    if (i == 0) 	{lpt = 0;}  else {lpt = uval[gf_indx_2d(gfs, i-1, j)];}
+	        if (i == 0) 	    {lpt = 0;}  else {lpt = uval[gf_indx_2d(gfs, i-1, j)];}
             if (i == gfs->nx-1) {rpt = 0;}  else {rpt = uval[gf_indx_2d(gfs, i+1, j)];}
-            if (j == 0) 	{dpt = 0;}  else {dpt = uval[gf_indx_2d(gfs, i, j-1)];}
+            if (j == 0) 	    {dpt = 0;}  else {dpt = uval[gf_indx_2d(gfs, i, j-1)];}
             if (j == gfs->ny-1) {upt = 0;}  else {upt = uval[gf_indx_2d(gfs, i, j+1)];}
 
 	    eval[ij] = (rpt + lpt + upt + dpt - 4 * uval[ij]) / (gfs->dx * gfs->dy) - sval[ij];
@@ -322,7 +316,7 @@ double check_error(struct ngfs_2d *gfs)
 	    {
 		error = lerr;
 	    }
-        }
+    }
     }
 
     //printf("ERROR AT 100: %f", eval[100]);
