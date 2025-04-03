@@ -108,7 +108,7 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
     if (left_rank == INVALID_RANK)   { xstart = 0; }         else { xstart = 1; }
     if (right_rank == INVALID_RANK)  { xend = gfs->nx; }     else { xend = gfs->nx - 1; }
 
-    const double omega = 0;
+    const double omega = 1.5;
 
     printf("----- BEGINNING SOLVER ON RANK %u -----\n", gfs->domain.rank);
     for (int _ = 0;;_ += check_every)
@@ -117,7 +117,7 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
     {
         //exchange_ghost_cells(gfs);
         /* -------------------------------   LOOP OVER ODD POINTS   ---------------------------------*/
-        if (ystart == 1 && xstart == 1)
+        if (ystart == 1 && xstart == 1) //not sure this is right 
         {
             for (long j = ystart; j < yend; j += 2)
             {
@@ -158,7 +158,7 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
                     //uval[ij] = (lpt + rpt + dpt + upt) / 4 - sval[ij] * gfs->dx * gfs->dy;
                     uval[ij] = (1.0 - omega) * uval[ij] + omega * 0.5 *
                         (lpt + rpt + upt + dpt - gfs->dx * gfs->dy * sval[ij]);
-                    //printf("After: uval[%d] = %f\n", ij, uval[ij]);
+                    printf("After: uval[%d] = %f\n", ij, uval[ij]);
                 }
             }
             exchange_ghost_cells(gfs);
