@@ -47,7 +47,7 @@ struct ngfs_2d
     struct domain2d_st domain; /* Domain structure */
 };
 
-static inline int gf_indx_2d(struct ngfs_2d *gfs, int i, int j)
+static inline long gf_indx_2d(struct ngfs_2d *gfs, long i, long j)
 {
     return i + j * gfs->nx;
 }

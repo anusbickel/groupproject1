@@ -319,7 +319,6 @@ double check_error(struct ngfs_2d *gfs)
     }
     }
 
-    //printf("ERROR AT 100: %f", eval[100]);
 
     MPI_Allreduce(&error, &gerror, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     return gerror;

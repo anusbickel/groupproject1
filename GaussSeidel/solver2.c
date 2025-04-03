@@ -93,90 +93,59 @@ int main(int argc, char** argv)
 
 void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
 {
-    int left_rank = gfs->domain.lower_x_rank;
-    int right_rank = gfs->domain.upper_x_rank;
-    int bottom_rank = gfs->domain.lower_y_rank;
-    int top_rank = gfs->domain.upper_y_rank;
-
     double* uval = gfs->vars[0]->val;
     double* sval = gfs->vars[1]->val;
 
-    int ystart; int yend; int xstart; int xend;
-
-    if (top_rank == INVALID_RANK)    { yend = gfs->ny; }     else { yend = gfs->ny - 1; }
-    if (bottom_rank == INVALID_RANK) { ystart = 0; }         else { ystart = 1; }
-    if (left_rank == INVALID_RANK)   { xstart = 0; }         else { xstart = 1; }
-    if (right_rank == INVALID_RANK)  { xend = gfs->nx; }     else { xend = gfs->nx - 1; }
+    double dx2 = gfs->nx * gfs->nx;
+    double dy2 = gfs->ny * gfs->ny;
 
     const double omega = 1.5;
 
     printf("----- BEGINNING SOLVER ON RANK %u -----\n", gfs->domain.rank);
     for (int _ = 0;;_ += check_every)
     {
-    for (int iter = 0; iter < check_every; iter++)
-    {
-        //exchange_ghost_cells(gfs);
-        /* -------------------------------   LOOP OVER ODD POINTS   ---------------------------------*/
-        if (ystart == 1 && xstart == 1) //not sure this is right 
+        for (int iter = 0; iter < check_every; iter++)
         {
-            for (long j = ystart; j < yend; j += 2)
+            /* -------------------------------   LOOP OVER ODD POINTS   ---------------------------------*/
+            for (long j = 1; j < gfs->ny; j += 1)
             {
-                for (long i = xstart; i < xend; i += 2)
+                for (long i = 1; i < gfs->nx; i += 2)
                 {
-                    const int ij = gf_indx_2d(gfs, i, j);
-                    double lpt; double rpt; double dpt; double upt;
-                    // BC
-                                                                   lpt = uval[gf_indx_2d(gfs, i - 1, j)];
-                    if (i == gfs->nx - 1) { rpt = 0; }      else { rpt = uval[gf_indx_2d(gfs, i + 1, j)]; }
-                                                                   dpt = uval[gf_indx_2d(gfs, i, j - 1)];
-                    if (j == gfs->ny - 1) { upt = 0; }      else { upt = uval[gf_indx_2d(gfs, i, j + 1)]; }
+                    const long ij = gf_indx_2d(gfs, i, j);
 
-                    uval[ij] = (1.0 - omega) * uval[ij] + omega * 0.5 *
-                        (lpt + rpt + upt + dpt - gfs->dx * gfs->dy * sval[ij]);
+                    uval[ij] = (1.0 - omega) * uval[ij] + 
+							omega * ((uval[ij+1] + uval[ij-1])/dx2 + (uval[ij+gfs->nx] + uval[ij-gfs->nx])/dy2 - sval[ij]) / ((2/dx2) + (2/dy2));
+					//printf("%f\n", uval[ij]);
+                }
+            }
+            exchange_ghost_cells(gfs);
+
+	    /* -------------------------------   LOOP OVER EVEN POINTS   ---------------------------------*/
+	    for (long j = 1; j < gfs->ny; j += 1)
+            {
+                for (long i = 2; i < gfs->nx; i += 2)
+                {
+                    const long ij = gf_indx_2d(gfs, i, j);
+
+                    uval[ij] = (1.0 - omega) * uval[ij] +
+							omega * ((uval[ij+1] + uval[ij-1])/dx2 + (uval[ij+gfs->nx] + uval[ij-gfs->nx])/dy2 - sval[ij]) / ((2/dx2) + (2/dy2));
                 }
             }
             exchange_ghost_cells(gfs);
         }
-        /* -------------------------------   LOOP OVER EVEN POINTS   --------------------------------*/
-        else
-        {
-            for (long j = ystart; j < yend; j += 2)
-            {
-                for (long i = xstart; i < xend; i += 2)
-                {
-                    const int ij = gf_indx_2d(gfs, i, j);
-                    double lpt; double rpt; double dpt; double upt;
+    
+    	double gerror = check_error(gfs);
 
-                    // vvvvvv BOUNDARY CONDITIONS vvvvvv    vvvvvvvvvvvvvvv REGULAR POINTS vvvvvvvvvvvvvvvv
-                    if (i == 0)             { lpt = 0; }    else { lpt = uval[gf_indx_2d(gfs, i - 1, j)]; }
-                    if (i == gfs->nx - 1)   { rpt = 0; }    else { rpt = uval[gf_indx_2d(gfs, i + 1, j)]; }
-                    if (j == 0)             { dpt = 0; }    else { dpt = uval[gf_indx_2d(gfs, i, j - 1)]; }
-                    if (j == gfs->ny - 1)   { upt = 0; }    else { upt = uval[gf_indx_2d(gfs, i, j + 1)]; }
-                    // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+	if (gfs->domain.rank == 0)
+	{
+	    printf("Error: %e\n", gerror);
+	}
 
-                    //printf("Before: uval[%d] = %f\n", ij, uval[ij]);
-                    //uval[ij] = (lpt + rpt + dpt + upt) / 4 - sval[ij] * gfs->dx * gfs->dy;
-                    uval[ij] = (1.0 - omega) * uval[ij] + omega * 0.5 *
-                        (lpt + rpt + upt + dpt - gfs->dx * gfs->dy * sval[ij]);
-                    printf("After: uval[%d] = %f\n", ij, uval[ij]);
-                }
-            }
-            exchange_ghost_cells(gfs);
-        }
-    }
-
-    double gerror = check_error(gfs);
-
-    if (gfs->domain.rank == 0)
-    {
-        //printf("Error: %e\n", gerror);
-    }
-
-    if (gerror < 1.0e-9)
-    {
-        printf("REACHED\n");
-        break;
-    }
+	if (gerror < 1.0e-9)
+	{
+	    printf("Error Proper Level\n");
+	    break;
+	}	    
     }
 }
 
@@ -187,9 +156,9 @@ static void fill_guess_values(struct ngfs_2d* gfs) {
         const double y = gfs->y0 + j * gfs->dy;
         for (int i = 0; i < gfs->nx; i++)
         {
-            const int ij = gf_indx_2d(gfs, i, j);
+            const long ij = gf_indx_2d(gfs, i, j);
             const double x = gfs->x0 + i * gfs->dx;
-            gfs->vars[0]->val[ij] = 1.0;
+            gfs->vars[0]->val[ij] = 0.0;
             //gfs->vars[1]->val[ij] = -2*(M_PI*M_PI)*sin(M_PI*x)*sin(M_PI*y);
             gfs->vars[1]->val[ij] = cos(20 * 4 * atan(1) * x) * cos(20 * 4 * atan(1) * y);
             gfs->vars[2]->val[ij] = 0.0;
@@ -236,12 +205,10 @@ static void exchange_ghost_cells(struct ngfs_2d* gfs)
         if (gfs->domain.upper_x_rank != INVALID_RANK)
         {
             if (gfs->domain.lower_x_rank == INVALID_RANK) {
-                // grabs only left edge
                 sstart = gf_indx_2d(gfs, gfs->nx - 2 * gfs->gs, j);
                 rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
             }
             else {
-                // only cores in the middle
                 sstart = gf_indx_2d(gfs, gfs->nx - 2 * gfs->gs, j);
                 rstart = gf_indx_2d(gfs, 0, j);
             }
@@ -254,12 +221,10 @@ static void exchange_ghost_cells(struct ngfs_2d* gfs)
         if (gfs->domain.lower_x_rank != INVALID_RANK)
         {
             if (gfs->domain.upper_x_rank == INVALID_RANK) {
-                // grabs good data from right edge
                 sstart = gf_indx_2d(gfs, gfs->gs, j);
                 rstart = gf_indx_2d(gfs, 0, j);
             }
             else {
-                // only cores in the middle
                 sstart = gf_indx_2d(gfs, gfs->gs, j);
                 rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
             }
@@ -275,12 +240,10 @@ static void exchange_ghost_cells(struct ngfs_2d* gfs)
     if (gfs->domain.lower_y_rank != INVALID_RANK)
     {
         if (gfs->domain.upper_y_rank == INVALID_RANK) {
-            // Top edge sending
             sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
             rstart = gf_indx_2d(gfs, 0, 0); // 0,0 is right
         }
         else {
-            // Middle sending
             sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
             rstart = gf_indx_2d(gfs, 0, gfs->ny - gfs->gs); // ny-gs is right
         }
@@ -294,16 +257,12 @@ static void exchange_ghost_cells(struct ngfs_2d* gfs)
     if (gfs->domain.upper_y_rank != INVALID_RANK)
     {
         if (gfs->domain.lower_y_rank == INVALID_RANK) {
-            // Working on bottom edge
             sstart = gf_indx_2d(gfs, 0, gfs->ny - 2 * gfs->gs);
             rstart = gf_indx_2d(gfs, 0, gfs->ny - gfs->gs);
-            //printf("This should be the bottom: rank %d \n", rank); // verification is good!
         }
         else {
-            // BOTTOM SENDING TO TOP; works on all middle cores
             sstart = gf_indx_2d(gfs, 0, gfs->ny - 2 * gfs->gs);
             rstart = gf_indx_2d(gfs, 0, 0);
-            //printf("This should be the middle: rank %d \n", rank);
         }
 
         MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
@@ -318,36 +277,20 @@ double check_error(struct ngfs_2d* gfs)
     double error = 0.0;
     double gerror = 0.0;
 
-    int left_rank = gfs->domain.lower_x_rank;
-    int right_rank = gfs->domain.upper_x_rank;
-    int bottom_rank = gfs->domain.lower_y_rank;
-    int top_rank = gfs->domain.upper_y_rank;
-
     double* uval = gfs->vars[0]->val;
     double* sval = gfs->vars[1]->val;
     double* eval = gfs->vars[2]->val;
 
-    int ystart; int yend; int xstart; int xend;
+    printf("dx: %f\n dy: %f\n", gfs->dx, gfs->dy);
 
-    if (top_rank == INVALID_RANK)    { yend = gfs->ny; }    else { yend = gfs->ny - 1; }
-    if (bottom_rank == INVALID_RANK) { ystart = 0; }        else { ystart = 1; }
-    if (left_rank == INVALID_RANK)   { xstart = 0; }        else { xstart = 1; }
-    if (right_rank == INVALID_RANK)  { xend = gfs->nx; }    else { xend = gfs->nx - 1; }
-
-    for (long j = ystart; j < yend; j++)
+    for (long j = 1; j < gfs->ny-1; j++)
     {
-        for (long i = xstart; i < xend; i++)
+        for (long i = 1; i < gfs->nx-1; i++)
         {
-            const int ij = gf_indx_2d(gfs, i, j);
-            double lpt; double rpt; double dpt; double upt;
-            if (i == 0)             { lpt = 0; }    else { lpt = uval[gf_indx_2d(gfs, i - 1, j)]; }
-            if (i == gfs->nx - 1)   { rpt = 0; }    else { rpt = uval[gf_indx_2d(gfs, i + 1, j)]; }
-            if (j == 0)             { dpt = 0; }    else { dpt = uval[gf_indx_2d(gfs, i, j - 1)]; }
-            if (j == gfs->ny - 1)   { upt = 0; }    else { upt = uval[gf_indx_2d(gfs, i, j + 1)]; }
+            const long ij = gf_indx_2d(gfs, i, j);
 
-
-            eval[ij] = (rpt + lpt + upt + dpt - 4 * uval[ij]) / (gfs->dx * gfs->dy) - sval[ij];
-            printf("eval at %d = %f\n", ij, eval[ij]);
+            eval[ij] = (uval[ij+1] + uval[ij-1] - 2*uval[ij]) / (gfs->dx * gfs->dx) + (uval[ij+gfs->nx] + uval[ij-gfs->nx] - 2*uval[ij]) / (gfs->dy * gfs->dy) - 2*sval[ij];
+            //printf("eval at %d = %f\n", ij, eval[ij]);
             double lerr = fabs(eval[ij]);
             if (lerr > error)
             {
@@ -355,8 +298,6 @@ double check_error(struct ngfs_2d* gfs)
             }
         }
     }
-
-    //printf("ERROR AT 100: %f", eval[100]);
 
     MPI_Allreduce(&error, &gerror, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     return gerror;
@@ -384,7 +325,7 @@ static void print_gf_function(struct ngfs_2d* gfs)
         for (int i = 0; i < gfs->nx; i++)
         {
             const char* end = i != gfs->nx - 1 ? "," : "";
-            const int ij = gf_indx_2d(gfs, i, j);
+            const long ij = gf_indx_2d(gfs, i, j);
             fprintf(f, "%20.16e%s", gfs->vars[0]->val[ij], end);
         }
         fprintf(f, "]%s", end);
