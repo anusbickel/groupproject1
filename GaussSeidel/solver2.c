@@ -99,7 +99,7 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
     double dx2 = gfs->dx * gfs->dx;
     double dy2 = gfs->dy * gfs->dy;
 
-    const double omega = 1.5;
+    const double omega = 1.9;
     int red_x, black_x, red_y, black_y; 
 
     //printf("local_i0 = %d; local_j0 = %d\n", gfs->domain.local_i0, gfs->domain.local_j0);
@@ -121,13 +121,14 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
                 {
                     const long ij = gf_indx_2d(gfs, i, j);
 
-                    uval[ij] = (1.0 - omega) * uval[ij] + omega * ((uval[ij + 1] + uval[ij - 1]) / dx2
-                        + (uval[ij + gfs->nx] + uval[ij - gfs->nx]) / dy2 - sval[ij]) / ((2 / dx2) + (2 / dy2));
+                    uval[ij] = (1.0 - omega) * uval[ij] + omega * ((uval[ij + 1] + uval[ij - 1]) * dy2
+                        + (uval[ij + gfs->nx] + uval[ij - gfs->nx]) * dx2 - (sval[ij] * dy2 * dx2)) / (2 * (dx2 + dy2));
+                    //printf("black uval[ij = %ld] = %f\n", ij, uval[ij]);
                     //printf("uval[ij+1 = %ld] = %f\n", ij + 1, uval[ij + 1]);
                     //printf("uval[ij-1 = %ld] = %f\n", ij - 1, uval[ij - 1]);
                     //printf("uval[ij+nx = %ld] = %f\n", ij + gfs->nx, uval[ij + gfs->nx]);
                     //printf("uval[ij-nx = %ld] = %f\n", ij - gfs->nx, uval[ij - gfs->nx]);
-                    //printf("dx2 = %f\n", dx2);
+                    //printf("dx = %f\n", gfs->domain.dx);
                     //printf("dy2 = %f\n", dy2);
                     //printf("Black uval[ij = %ld] = %f\n", ij, uval[ij]);
                 }
@@ -141,13 +142,14 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
                 {
                     const long ij = gf_indx_2d(gfs, i, j);
 
-                    uval[ij] = (1.0 - omega) * uval[ij] + omega * ((uval[ij+1] + uval[ij-1])/dx2 
-                                + (uval[ij+gfs->nx] + uval[ij-gfs->nx])/dy2 - sval[ij]) / ((2/dx2) + (2/dy2));   
+                    uval[ij] = (1.0 - omega) * uval[ij] + omega * ((uval[ij+1] + uval[ij-1]) * dy2 
+                                + (uval[ij+gfs->nx] + uval[ij-gfs->nx]) * dx2 - (sval[ij] * dy2 * dx2)) / (2 * (dx2 + dy2));
+                    //printf("red uval[ij = %ld] = %f\n", ij, uval[ij]);
                 }
             }
             exchange_ghost_cells(gfs);
         }
-    
+        printf("red uval[ij = 25] = %f\n", uval[25]);
     	double gerror = check_error(gfs);
 
 	if (gfs->domain.rank == 0)
@@ -304,8 +306,8 @@ double check_error(struct ngfs_2d* gfs)
             const long ij = gf_indx_2d(gfs, i, j);
 
             eval[ij] = (uval[ij+1] + uval[ij-1] - 2*uval[ij]) / (gfs->dx * gfs->dx) 
-                + (uval[ij+gfs->nx] + uval[ij-gfs->nx] - 2*uval[ij]) / (gfs->dy * gfs->dy) - 2*sval[ij];
-            //printf("eval at %d = %f\n", ij, eval[ij]);
+                + (uval[ij+gfs->nx] + uval[ij-gfs->nx] - 2*uval[ij]) / (gfs->dy * gfs->dy) - sval[ij];
+            //printf("eval[ij = %ld] = %f\n", ij, eval[ij]);
             double lerr = fabs(eval[ij]);
             if (lerr > error)
             {
