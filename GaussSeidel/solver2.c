@@ -65,21 +65,17 @@ int main(int argc, char** argv)
     gfs.vars = NULL;
 
     const int nvars = 3; // uval 0, sval 1, eval 2
-
-    printf("SETTING UP DOMAIN\n");
+	
     setup_2d_domain(px, py, mpi_rank, global_nx, global_ny, gs, global_x0,
         global_y0, dx, dy, &gfs.domain);
-
-    printf("ALLOCATING\n");
+	
     ngfs_2d_allocate(nvars, &gfs);
 
-    printf("FILLING VALUES\n");
     fill_guess_values(&gfs);
     MPI_Barrier(MPI_COMM_WORLD);
 
     //exchange_ghost_cells(&gfs);
-    printf("SOLVING GS\n");
-    const int check_every = 10240;
+    const int check_every = 1240;
     gauss_seidel_solver_2d(&gfs, check_every);
 
     print_gf_function(&gfs);
@@ -100,29 +96,30 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
     double dy2 = gfs->dy * gfs->dy;
 
     const double omega = 1.9;
-    int red_x, black_x, red_y, black_y; 
+
+	int red_x, black_x, red_y, black_y;
+
+	if (gfs->domain.local_i0 % 2 == 0) {black_x=1; red_x=2;} else {black_x=2; red_x=1;}
 
     //printf("local_i0 = %d; local_j0 = %d\n", gfs->domain.local_i0, gfs->domain.local_j0);
-    if (gfs->domain.local_i0 % 2 != 0)  {red_x = 1; black_x = 2;}
-    else                                {red_x = 2; black_x = 1;}
 
-    if (gfs->domain.local_j0 % 2 != 0)  {red_y = 1; black_y = 2;}
-    else                                {red_y = 2; black_y = 1;}
-
-    printf("----- BEGINNING SOLVER ON RANK %u -----\n", gfs->domain.rank);
+    //printf("----- BEGINNING SOLVER ON RANK %u -----\n", gfs->domain.rank);
     for (int _ = 0;;_ += check_every)
     {
         for (int iter = 0; iter < check_every; iter++)
         {
             /* -------------------------------   LOOP OVER BLACK POINTS   ---------------------------------*/
-            for (long j = black_y; j < gfs->ny-1; j += 1)
+            for (long j = 1; j < gfs->ny-1; j++)
             {
-                for (long i = black_x; i < gfs->nx-1; i += 2)
+				int alt = 1-(gfs->domain.local_j0 + j)%2;
+                for (long i = 1+alt; i < gfs->nx-1; i += 2)
                 {
                     const long ij = gf_indx_2d(gfs, i, j);
 
-                    uval[ij] = (1.0 - omega) * uval[ij] + omega * ((uval[ij + 1] + uval[ij - 1]) * dy2
-                        + (uval[ij + gfs->nx] + uval[ij - gfs->nx]) * dx2 - (sval[ij] * dy2 * dx2)) / (2 * (dx2 + dy2));
+                    uval[ij] = (1.0 - omega) * uval[ij] + 
+								omega * ((uval[ij + 1] + uval[ij - 1]) * dy2 + 
+								(uval[ij + gfs->nx] + uval[ij - gfs->nx]) * dx2 - 
+								(sval[ij] * dy2 * dx2)) / (2 * (dx2 + dy2));
                     //printf("black uval[ij = %ld] = %f\n", ij, uval[ij]);
                     //printf("uval[ij+1 = %ld] = %f\n", ij + 1, uval[ij + 1]);
                     //printf("uval[ij-1 = %ld] = %f\n", ij - 1, uval[ij - 1]);
@@ -136,32 +133,35 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
             exchange_ghost_cells(gfs);
 
 	    /* -------------------------------   LOOP OVER RED POINTS   ---------------------------------*/
-	    for (long j = red_y; j < gfs->ny; j += 1)
+	    for (long j = 1; j < gfs->ny-1; j++)
             {
-                for (long i = red_x; i < gfs->nx; i += 2)
+				int alt = (gfs->domain.local_j0+j)%2;
+                for (long i = 1+alt; i < gfs->nx-1; i += 2)
                 {
                     const long ij = gf_indx_2d(gfs, i, j);
 
-                    uval[ij] = (1.0 - omega) * uval[ij] + omega * ((uval[ij+1] + uval[ij-1]) * dy2 
-                                + (uval[ij+gfs->nx] + uval[ij-gfs->nx]) * dx2 - (sval[ij] * dy2 * dx2)) / (2 * (dx2 + dy2));
+                    uval[ij] = (1.0 - omega) * uval[ij] + 
+								omega * ((uval[ij+1] + uval[ij-1]) * dy2 + 
+								(uval[ij+gfs->nx] + uval[ij-gfs->nx]) * dx2 - 
+								(sval[ij] * dy2 * dx2)) / (2 * (dx2 + dy2));
                     //printf("red uval[ij = %ld] = %f\n", ij, uval[ij]);
                 }
             }
             exchange_ghost_cells(gfs);
+			//printf("red uval[ij = 120] = %f\n", uval[120]);
         }
-        printf("red uval[ij = 25] = %f\n", uval[25]);
     	double gerror = check_error(gfs);
 
-	if (gfs->domain.rank == 0)
-	{
-	    printf("Error: %e\n", gerror);
-	}
+		if (gfs->domain.rank == 0)
+		{
+		    printf("Error: %e\n", gerror);
+			if (gerror < 1.0e-9)
+	    	{
+	        	printf("Error Proper Level\n");
+	        	break;
+	    	}
+		}
 
-	if (gerror < 1.0e-9)
-	{
-	    printf("Error Proper Level\n");
-	    break;
-	}	    
     }
 }
 
