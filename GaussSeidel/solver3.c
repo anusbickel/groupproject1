@@ -79,7 +79,7 @@ int main(int argc, char** argv)
 
     //exchange_ghost_cells(&gfs);
     printf("SOLVING GS\n");
-    const int check_every = 10240;
+    const int check_every = 1024;
     gauss_seidel_solver_2d(&gfs, check_every);
 
     print_gf_function(&gfs);
@@ -103,7 +103,7 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
 
     const double omega = 1.9;
 
-    printf("----- BEGINNING SOLVER ON RANK %u -----\n", gfs->domain.rank);
+    //printf("----- BEGINNING SOLVER ON RANK %u -----\n", gfs->domain.rank);
     for (int _ = 0;;_ += check_every)
     {
         for (int iter = 0; iter < check_every; iter++)
@@ -117,7 +117,7 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
                     const long ij = gf_indx_2d(gfs, i, j);
 
                     uval[ij] = (1.0 - omega) * uval[ij] + omega * ((uval[ij + 1] + uval[ij - 1]) * dy2
-                        + (uval[ij + gfs->nx] + uval[ij - gfs->nx]) * dx2 - (sval[ij] * dy2 * dx2)) * idenom;
+                        + (uval[ij + gfs->nx] + uval[ij - gfs->nx]) * dx2 - sval[ij] * (dy2 * dx2)) * idenom;
                     //printf("Black uval[ij = %ld] = %f\n", ij, uval[ij]);
                     //printf("uval[ij+1 = %ld] = %f\n", ij + 1, uval[ij + 1]);
                     //printf("uval[ij-1 = %ld] = %f\n", ij - 1, uval[ij - 1]);
@@ -145,7 +145,8 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
             }
             exchange_ghost_cells(gfs);
         }
-        //printf("uval[i,j = 3,4] = %20.16e\n", uval[3 + 4 * gfs->nx]); // try 3 * nx + 4 (4, 3) and (4, 4) red/black
+        printf("uval[i,j = 3,4] = %20.16e\n", uval[3 + 4 * gfs->nx]); // try 3 * nx + 4 (4, 3) and (4, 4) red/black
+        printf("iter=%d\n", _);
         double gerror = check_error(gfs);
 
         if (gfs->domain.rank == 0)
@@ -158,6 +159,8 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
             printf("Error Proper Level\n");
             break;
         }
+
+        if (_ == 10240) { printf("exited here\n"); break; }
     }
 }
 
@@ -170,10 +173,10 @@ static void fill_guess_values(struct ngfs_2d* gfs) {
         {
             const long ij = gf_indx_2d(gfs, i, j);
             const double x = gfs->x0 + i * gfs->dx;
-            gfs->vars[0]->val[ij] = 0.0;
+            gfs->vars[0]->val[ij] = 0.03;
             //gfs->vars[1]->val[ij] = -2*(M_PI*M_PI)*sin(M_PI*x)*sin(M_PI*y);
-            //gfs->vars[1]->val[ij] = cos(20 * 4 * atan(1) * x) * cos(20 * 4 * atan(1) * y);
-            gfs->vars[1]->val[ij] = exp(-(x * x + y * y) * 50);
+            gfs->vars[1]->val[ij] = cos(3* 4 * atan(1) * x) * cos(3 * 4 * atan(1) * y);
+            //gfs->vars[1]->val[ij] = exp(-(x * x + y * y) * 50);
             gfs->vars[2]->val[ij] = 0.0;
             //printf("Guess value at %ld = %f\n", ij, gfs->vars[1]->val[ij]);
         }
@@ -289,6 +292,7 @@ double check_error(struct ngfs_2d* gfs)
 {
     double error = 0.0;
     double gerror = 0.0;
+    //double lerr = 0.0;
 
     double* uval = gfs->vars[0]->val;
     double* sval = gfs->vars[1]->val;
@@ -305,11 +309,13 @@ double check_error(struct ngfs_2d* gfs)
             eval[ij] = (uval[ij + 1] + uval[ij - 1] - 2 * uval[ij]) / (gfs->dx * gfs->dx)
                 + (uval[ij + gfs->nx] + uval[ij - gfs->nx] - 2 * uval[ij]) / (gfs->dy * gfs->dy) - sval[ij];
             //printf("eval[ij = %ld] = %f\n", ij, eval[ij]);
-            double lerr = fabs(eval[ij]);
-            if (lerr > error)
-            {
+            //double lerr = fabs(eval[ij]);
+            error = eval[ij] * eval[ij];
+
+            /*if (lerr > error)
+            { 
                 error = lerr;
-            }
+            }*/
         }
     }
 
