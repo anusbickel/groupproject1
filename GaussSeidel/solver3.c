@@ -15,6 +15,7 @@ static void fill_guess_values(struct ngfs_2d* gfs);
 static void exchange_ghost_cells(struct ngfs_2d* gfs);
 static void print_gf_function(struct ngfs_2d* gfs);
 void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int max_iters);
+void test(struct ngfs_2d* gfs);
 int MPI_Isendrecv(const void* sendbuf, int sendcount, MPI_Datatype sendtype, int dest, int sendtag,
     void* recvbuf, int recvcount, MPI_Datatype recvtype, int source, int recvtag, MPI_Comm comm,
     MPI_Request* request);
@@ -66,21 +67,22 @@ int main(int argc, char** argv)
 
     const int nvars = 3; // uval 0, sval 1, eval 2
 
-    printf("SETTING UP DOMAIN\n");
+    //printf("SETTING UP DOMAIN\n");
     setup_2d_domain(px, py, mpi_rank, global_nx, global_ny, gs, global_x0,
-        global_y0, dx, dy, &gfs.domain);
+        			global_y0, dx, dy, &gfs.domain);
 
-    printf("ALLOCATING\n");
+    //printf("ALLOCATING\n");
     ngfs_2d_allocate(nvars, &gfs);
 
-    printf("FILLING VALUES\n");
+    //printf("FILLING VALUES\n");
     fill_guess_values(&gfs);
     MPI_Barrier(MPI_COMM_WORLD);
 
-    //exchange_ghost_cells(&gfs);
-    printf("SOLVING GS\n");
+    exchange_ghost_cells(&gfs);
+    //printf("SOLVING GS\n");
     const int check_every = 1024;
-    gauss_seidel_solver_2d(&gfs, check_every);
+    //gauss_seidel_solver_2d(&gfs, check_every);
+	test(&gfs);
 
     print_gf_function(&gfs);
 
@@ -101,7 +103,12 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
 
     double idenom = 1.0 / (2 * (dx2 + dy2));
 
-    const double omega = 1.9;
+    const double omega = 1.2;
+
+	if (gfs->domain.rank == 0)
+	{
+		printf("Starting GS!");
+	}
 
     //printf("----- BEGINNING SOLVER ON RANK %u -----\n", gfs->domain.rank);
     for (int _ = 0;;_ += check_every)
@@ -111,29 +118,22 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
             /* -------------------------------   LOOP OVER BLACK POINTS   ---------------------------------*/
             for (long j = 1; j < gfs->ny - 1; j += 1)  
             {
-                int off = 1 - j % 2;
+                int off = 1 - ((gfs->domain.local_j0 + gfs->domain.local_i0 + j) % 2);
                 for (long i = 1+off; i < gfs->nx - 1; i += 2)
                 {
                     const long ij = gf_indx_2d(gfs, i, j);
 
                     uval[ij] = (1.0 - omega) * uval[ij] + omega * ((uval[ij + 1] + uval[ij - 1]) * dy2
                         + (uval[ij + gfs->nx] + uval[ij - gfs->nx]) * dx2 - sval[ij] * (dy2 * dx2)) * idenom;
-                    //printf("Black uval[ij = %ld] = %f\n", ij, uval[ij]);
-                    //printf("uval[ij+1 = %ld] = %f\n", ij + 1, uval[ij + 1]);
-                    //printf("uval[ij-1 = %ld] = %f\n", ij - 1, uval[ij - 1]);
-                    //printf("uval[ij+nx = %ld] = %f\n", ij + gfs->nx, uval[ij + gfs->nx]);
-                    //printf("uval[ij-nx = %ld] = %f\n", ij - gfs->nx, uval[ij - gfs->nx]);
-                    //printf("dx = %f\n", gfs->domain.dx);
-                    //printf("dy2 = %f\n", dy2);
 
                 }
             }
             exchange_ghost_cells(gfs);
 
             /* -------------------------------   LOOP OVER RED POINTS   ---------------------------------*/
-            for (long j = 1; j < gfs->ny; j += 1)
+            for (long j = 1; j < gfs->ny-1; j += 1)
             {
-                int off = j % 2;
+                int off = (gfs->domain.local_j0 + gfs->domain.local_i0 + j) % 2;
                 for (long i = 1+off; i < gfs->nx - 1; i += 2)
                 {
                     const long ij = gf_indx_2d(gfs, i, j);
@@ -145,13 +145,15 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
             }
             exchange_ghost_cells(gfs);
         }
-        printf("uval[i,j = 3,4] = %20.16e\n", uval[3 + 4 * gfs->nx]); // try 3 * nx + 4 (4, 3) and (4, 4) red/black
-        printf("iter=%d\n", _);
+        //printf("uval[i,j = 3,4] = %20.16e\n", uval[3 + 4 * gfs->nx]); // try 3 * nx + 4 (4, 3) and (4, 4) red/black
+        //printf("iter=%d\n", _);
         double gerror = check_error(gfs);
 
         if (gfs->domain.rank == 0)
         {
-            //printf("Error: %e\n", gerror);
+            printf("Iter: %d\n", _);
+            printf("Error: %e\n", gerror);
+			fflush(stdout);
         }
 
         if (gerror < 1.0e-9)
@@ -160,8 +162,41 @@ void gauss_seidel_solver_2d(struct ngfs_2d* gfs, int check_every)
             break;
         }
 
-        if (_ == 10240) { printf("exited here\n"); break; }
+        if (_ >= 1) { printf("exited here\n"); break; }
     }
+}
+
+
+void test(struct ngfs_2d* gfs) {
+	double* uval = gfs->vars[0]->val;
+	printf("1\n");
+
+	for (long j = 1; j < gfs->ny - 1; j += 1)
+    {
+        int off = 1 - ((gfs->domain.local_j0 + gfs->domain.local_i0 + j) % 2);
+        for (long i = 1+off; i < gfs->nx - 1; i += 2)
+        {
+            const long ij = gf_indx_2d(gfs, i, j);
+
+            uval[ij] = 4.0;
+
+        }
+    }
+	printf("2\n");
+    exchange_ghost_cells(gfs);
+
+    for (long j = 1; j < gfs->ny-1; j += 1)
+    {
+        int off = (gfs->domain.local_j0 + gfs->domain.local_i0 + j) % 2;
+        for (long i = 1+off; i < gfs->nx - 1; i += 2)
+        {
+            const long ij = gf_indx_2d(gfs, i, j);
+
+			uval[ij] = 0.0;
+
+        }
+    }
+    exchange_ghost_cells(gfs);
 }
 
 
@@ -173,10 +208,8 @@ static void fill_guess_values(struct ngfs_2d* gfs) {
         {
             const long ij = gf_indx_2d(gfs, i, j);
             const double x = gfs->x0 + i * gfs->dx;
-            gfs->vars[0]->val[ij] = 0.03;
-            //gfs->vars[1]->val[ij] = -2*(M_PI*M_PI)*sin(M_PI*x)*sin(M_PI*y);
-            gfs->vars[1]->val[ij] = cos(3* 4 * atan(1) * x) * cos(3 * 4 * atan(1) * y);
-            //gfs->vars[1]->val[ij] = exp(-(x * x + y * y) * 50);
+            gfs->vars[0]->val[ij] = 0;
+            gfs->vars[1]->val[ij] = -2*(M_PI*M_PI)*sin(M_PI*x)*sin(M_PI*y);
             gfs->vars[2]->val[ij] = 0.0;
             //printf("Guess value at %ld = %f\n", ij, gfs->vars[1]->val[ij]);
         }
@@ -186,106 +219,118 @@ static void fill_guess_values(struct ngfs_2d* gfs) {
 
 int MPI_Isendrecv(const void* sendbuf, int sendcount, MPI_Datatype sendtype, int dest, int sendtag,
     void* recvbuf, int recvcount, MPI_Datatype recvtype, int source, int recvtag, MPI_Comm comm,
-    MPI_Request* request)
+    MPI_Request* requests)
 {
-    MPI_Isend(sendbuf, sendcount, sendtype, dest, sendtag, comm, request);
-    MPI_Irecv(recvbuf, recvcount, recvtype, source, recvtag, comm, request);
+	MPI_Request requests[2];
+    MPI_Isend(sendbuf, sendcount, sendtype, dest, sendtag, comm, &requests[0]);
+    MPI_Irecv(recvbuf, recvcount, recvtype, source, recvtag, comm, &requests[1]);
+	MPI_Waitall(2, requests, MPI_STATUSES_IGNORE);
 
     return 0;
 }
 
 
 
-static void exchange_ghost_cells(struct ngfs_2d* gfs)
+static void exchange_ghost_cells(struct ngfs_2d *gfs)
 {
     int left_rank = gfs->domain.lower_x_rank;
     int right_rank = gfs->domain.upper_x_rank;
     int bottom_rank = gfs->domain.lower_y_rank;
     int top_rank = gfs->domain.upper_y_rank;
-    //int rank = gfs->domain.rank;
 
-    /*int *b = malloc(gfs->gs * gfs->ny * sizeof(double));
-
-    for (i=0; i < 2 * gfs->gs * gfs->ny; i++)
-    {
-        const int start = gf_indx_2d(gfs, gfs->nx - 2*gfs->gs - 1, 0);
-        b[i] = gfs->vars[0]->val[start + i];
-    }*/
-    MPI_Request request;
     int sstart;
     int rstart;
 
-    for (int j = 0; j < gfs->ny; j++)
-    {
-        // Left to Right
-        if (gfs->domain.upper_x_rank != INVALID_RANK)
+	MPI_Request request[2];
+
+    MPI_Datatype column_type;
+    MPI_Type_vector(gfs->ny, gfs->gs, gfs->nx, MPI_DOUBLE, &column_type);
+    MPI_Type_commit(&column_type);
+
+    if (gfs->domain.upper_x_rank != INVALID_RANK)
+    {   
+        if (gfs->domain.lower_x_rank == INVALID_RANK)
         {
-            if (gfs->domain.lower_x_rank == INVALID_RANK) {
-                sstart = gf_indx_2d(gfs, gfs->nx - 2 * gfs->gs, j);
-                rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
-            }
-            else {
-                sstart = gf_indx_2d(gfs, gfs->nx - 2 * gfs->gs, j);
-                rstart = gf_indx_2d(gfs, 0, j);
-            }
-            MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->gs, MPI_DOUBLE, right_rank, 0,
-                &gfs->vars[0]->val[rstart], gfs->gs, MPI_DOUBLE, left_rank, 0,
-                MPI_COMM_WORLD, &request);
+            sstart = gf_indx_2d(gfs, gfs->nx - 2 * gfs->gs, 0); 
+            rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, 0); 
+        }
+        else
+        {
+            sstart = gf_indx_2d(gfs, gfs->nx - 2 * gfs->gs, 0); 
+            rstart = gf_indx_2d(gfs, 0, 0); 
         }
 
-        // Right to Left
-        if (gfs->domain.lower_x_rank != INVALID_RANK)
+        MPI_Sendrecv(&gfs->vars[0]->val[sstart], 1, column_type, right_rank, 0,
+                     &gfs->vars[0]->val[rstart], 1, column_type, left_rank, 0,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }   
+
+    if (gfs->domain.lower_x_rank != INVALID_RANK) {
+        if (gfs->domain.upper_x_rank == INVALID_RANK)
         {
-            if (gfs->domain.upper_x_rank == INVALID_RANK) {
-                sstart = gf_indx_2d(gfs, gfs->gs, j);
-                rstart = gf_indx_2d(gfs, 0, j);
-            }
-            else {
-                sstart = gf_indx_2d(gfs, gfs->gs, j);
-                rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, j);
-            }
-            MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->gs, MPI_DOUBLE, left_rank, 0,
-                &gfs->vars[0]->val[rstart], gfs->gs, MPI_DOUBLE, right_rank, 0,
-                MPI_COMM_WORLD, &request);
+            sstart = gf_indx_2d(gfs, gfs->gs, 0); 
+            rstart = gf_indx_2d(gfs, 0, 0); 
         }
-    }
+        else 
+        {
+            sstart = gf_indx_2d(gfs, gfs->gs, 0); 
+            rstart = gf_indx_2d(gfs, gfs->nx - gfs->gs, 0); 
+        }
+        MPI_Sendrecv(&gfs->vars[0]->val[sstart], 1, column_type, left_rank, 0,
+                     &gfs->vars[0]->val[rstart], 1, column_type, right_rank, 0,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }   
 
-    MPI_Barrier(MPI_COMM_WORLD);
+	MPI_Barrier(MPI_COMM_WORLD);
 
-    // Top to Bottom
-    if (gfs->domain.lower_y_rank != INVALID_RANK)
-    {
+    // Top to Bottom 
+    if (gfs->domain.lower_y_rank != INVALID_RANK)  
+    {   
         if (gfs->domain.upper_y_rank == INVALID_RANK) {
+            // Top edge sending
             sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
             rstart = gf_indx_2d(gfs, 0, 0); // 0,0 is right
         }
         else {
+            // Middle sending
             sstart = gf_indx_2d(gfs, 0, gfs->gs); // gs is right
-            rstart = gf_indx_2d(gfs, 0, gfs->ny - gfs->gs); // ny-gs is right
+            rstart = gf_indx_2d(gfs, 0, gfs->ny -gfs->gs); // ny-gs is right
         }
 
-        MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
-            &gfs->vars[0]->val[rstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
-            MPI_COMM_WORLD, &request);
-    }
-
+//        MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
+//              &gfs->vars[0]->val[rstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
+//              MPI_COMM_WORLD, &request); 
+        MPI_Sendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
+                     &gfs->vars[0]->val[rstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }   
+    
     // Bottom to Top
-    if (gfs->domain.upper_y_rank != INVALID_RANK)
-    {
+    if (gfs->domain.upper_y_rank != INVALID_RANK) 
+    {   
         if (gfs->domain.lower_y_rank == INVALID_RANK) {
+            // Working on bottom edge
             sstart = gf_indx_2d(gfs, 0, gfs->ny - 2 * gfs->gs);
-            rstart = gf_indx_2d(gfs, 0, gfs->ny - gfs->gs);
+            rstart = gf_indx_2d(gfs, 0 , gfs->ny - gfs->gs);
+            //printf("This should be the bottom: rank %d \n", rank); // verification is good!
         }
-        else {
+        else { 
+            // BOTTOM SENDING TO TOP; works on all middle cores 
             sstart = gf_indx_2d(gfs, 0, gfs->ny - 2 * gfs->gs);
-            rstart = gf_indx_2d(gfs, 0, 0);
+            rstart = gf_indx_2d(gfs, 0, 0); 
+            //printf("This should be the middle: rank %d \n", rank);
         }
-
-        MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
-            &gfs->vars[0]->val[rstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
-            MPI_COMM_WORLD, &request);
-    }
+    
+//        MPI_Isendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
+//              &gfs->vars[0]->val[rstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
+//              MPI_COMM_WORLD, &request); 
+        MPI_Sendrecv(&gfs->vars[0]->val[sstart], gfs->nx * gfs->gs, MPI_DOUBLE, top_rank, 0,
+                     &gfs->vars[0]->val[rstart], gfs->nx * gfs->gs, MPI_DOUBLE, bottom_rank, 0,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+   }   
 }
+
+
 
 
 double check_error(struct ngfs_2d* gfs)
@@ -320,7 +365,7 @@ double check_error(struct ngfs_2d* gfs)
     }
 
     MPI_Allreduce(&error, &gerror, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    return sqrt(gerror / (gfs->nx + gfs->ny - 4));
+    return sqrt(gerror / ((gfs->domain.global_ni-2) * (gfs->domain.global_nj-2)));
 }
 
 
